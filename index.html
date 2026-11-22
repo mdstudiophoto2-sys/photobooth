@@ -11,6 +11,10 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font-family
 button{font:inherit;color:inherit;border:0;cursor:pointer}
 .screen{position:fixed;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;padding:24px;gap:18px;overflow:auto}
 .screen.active{display:flex}
+#layout,#pay,#home{justify-content:flex-start}
+#layout>:first-child,#pay>:first-child,#home>:first-child{margin-top:auto}
+#layout>:last-child,#pay>:last-child,#home>:last-child{margin-bottom:auto}
+#layoutGo{position:sticky;bottom:10px}
 h1{font-size:clamp(34px,7vw,84px);margin:0;letter-spacing:-.02em;line-height:1;text-align:center}
 h2{font-size:clamp(24px,4vw,40px);margin:0;text-align:center}
 .mut{color:var(--mut)}
@@ -23,6 +27,7 @@ h2{font-size:clamp(24px,4vw,40px);margin:0;text-align:center}
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:16px;width:min(900px,100%)}
 .card{background:var(--panel);border:2px solid var(--line);border-radius:var(--r);padding:18px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center}
 .card.sel{border-color:var(--acc);background:#2a1820}
+.card .tp{height:200px;max-width:100%;object-fit:contain;border-radius:6px;box-shadow:0 6px 20px #0008}
 .card .ic{display:flex;gap:4px;height:110px;align-items:center;justify-content:center}
 .ic i{display:block;background:#4a4555;border-radius:4px}
 .chips{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
@@ -128,7 +133,9 @@ td,th{padding:8px;border-bottom:1px solid var(--line);text-align:left}
 
 <!-- LAYOUT -->
 <section id="layout" class="screen">
-  <h2>Pilih Layout Foto</h2>
+  <h2>Pilih Frame Foto</h2>
+  <div class="cards" id="tplCards"></div>
+  <div class="mut" style="margin-top:6px">atau layout polos:</div>
   <div class="cards" id="layoutCards"></div>
   <div class="row"><button class="btn" id="layoutGo">Lanjut ke Kamera →</button></div>
 </section>
@@ -276,7 +283,7 @@ const FILTERS={normal:['Normal','none'],bw:['Hitam Putih','grayscale(1) contrast
 
 /* ---------- STATE ---------- */
 let sess=null, stream=null, busy=false, idleT=null;
-function newSess(){sess={layout:'strip',prints:1,shots:[],filter:'normal',theme:'white',retakes:S.retake,paid:false,printed:0};}
+function newSess(){sess={layout:TEMPLATES.length?TEMPLATES[0].layout:'strip',prints:1,shots:[],filter:'normal',theme:TEMPLATES.length?'tpl:'+TEMPLATES[0].id:'white',retakes:S.retake,paid:false,printed:0};}
 
 function show(id){$$('.screen').forEach(s=>s.classList.toggle('active',s.id===id));$('#gear').style.display=(id==='home')?'block':'none';armIdle(id)}
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('on'),2600)}
@@ -325,12 +332,19 @@ $('#pinCancel').onclick=()=>{$('#modal').classList.remove('on');pinCb=null};
 /* ---------- LAYOUT PICK ---------- */
 function layoutIcon(L){const sc=100/Math.max(L.W,L.H);return `<div style="position:relative;width:${L.W*sc}px;height:${L.H*sc}px;background:#fff;border-radius:4px">`+
   L.slots.map(s=>`<i style="position:absolute;left:${s.x*sc}px;top:${s.y*sc}px;width:${s.w*sc}px;height:${s.h*sc}px"></i>`).join('')+'</div>'}
+function tplThumb(T){const sc=0.25,c=document.createElement('canvas');c.width=T.W*sc;c.height=T.H*sc;const x=c.getContext('2d');x.scale(sc,sc);
+  x.fillStyle=T.bg;x.fillRect(0,0,T.W,T.H);T.slots.forEach(s=>{x.fillStyle='#8f8a9c';x.fillRect(s.x,s.y,s.w,s.h);x.fillStyle='#c9c3d4';x.beginPath();x.arc(s.x+s.w/2,s.y+s.h*.5,Math.min(s.w,s.h)*.2,0,7);x.fill();x.fillRect(s.x+s.w*.3,s.y+s.h*.72,s.w*.4,s.h*.28)});
+  const im=tplImgs[T.id];if(im&&im.complete)x.drawImage(im,0,0,T.W,T.H);
+  T.texts.forEach(t=>{x.fillStyle=t.color;x.font=`${t.weight==='bold'?'bold ':''}${t.size}px ${t.font}`;x.textAlign=t.align==='left'?'left':'center';x.textBaseline='middle';x.fillText(fmtTok(t.t),t.x,t.y)});
+  return c.toDataURL('image/jpeg',.85)}
 function openLayout(){
-  $('#layoutCards').innerHTML=Object.entries(LAYOUTS).map(([k,L])=>`<button class="card ${k===sess.layout?'sel':''}" data-l="${k}"><div class="ic">${layoutIcon(L)}</div><b>${L.name}</b><span class="mut" style="font-size:13px">${L.sub}</span></button>`).join('');
-  $$('#layoutCards .card').forEach(c=>c.onclick=()=>{sess.layout=c.dataset.l;$$('#layoutCards .card').forEach(x=>x.classList.toggle('sel',x===c))});
+  $('#tplCards').innerHTML=TEMPLATES.map(T=>`<button class="card ${sess.theme==='tpl:'+T.id?'sel':''}" data-tpl="${T.id}"><img class="tp" src="${tplThumb(T)}" alt=""><b>${T.name}</b><span class="mut" style="font-size:13px">${LAYOUTS[T.layout].name}</span></button>`).join('');
+  $$('#tplCards .card').forEach(c=>c.onclick=()=>{const T=TEMPLATES.find(t=>t.id===c.dataset.tpl);sess.layout=T.layout;sess.theme='tpl:'+T.id;$$('#tplCards .card,#layoutCards .card').forEach(x=>x.classList.toggle('sel',x===c))});
+  $('#layoutCards').innerHTML=Object.entries(LAYOUTS).map(([k,L])=>`<button class="card ${k===sess.layout&&!sess.theme.startsWith('tpl:')?'sel':''}" data-l="${k}"><div class="ic">${layoutIcon(L)}</div><b>${L.name}</b><span class="mut" style="font-size:13px">${L.sub}</span></button>`).join('');
+  $$('#layoutCards .card').forEach(c=>c.onclick=()=>{sess.layout=c.dataset.l;sess.theme='white';$$('#tplCards .card,#layoutCards .card').forEach(x=>x.classList.toggle('sel',x===c))});
   show('layout');
 }
-$('#layoutGo').onclick=()=>{const t=tplFor(sess.layout);sess.theme=t.length?'tpl:'+t[0].id:'white';openShoot()};
+$('#layoutGo').onclick=()=>openShoot();
 
 /* ---------- CAMERA ---------- */
 async function startCam(){
